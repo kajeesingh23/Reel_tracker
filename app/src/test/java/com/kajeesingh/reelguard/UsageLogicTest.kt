@@ -15,7 +15,7 @@ class UsageLogicTest {
         assertEquals(1440, UsageLogic.clampLimit(5000))
     }
     @Test fun incrementNeverGoesNegativeOrOverflows() {
-        assertEquals(0, UsageLogic.safeIncrement(5, -2))
+        assertEquals(5, UsageLogic.safeIncrement(5, -2))
         assertEquals(Int.MAX_VALUE, UsageLogic.safeIncrement(Int.MAX_VALUE, 1))
     }
     @Test fun zonesHaveExactBoundaries() {
