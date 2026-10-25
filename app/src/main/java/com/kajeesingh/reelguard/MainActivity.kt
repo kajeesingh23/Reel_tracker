@@ -1,73 +1,84 @@
 package com.kajeesingh.reelguard
 
 import android.app.Activity
-import android.app.AppOpsManager
-import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
 import android.widget.*
-import java.util.Calendar
 
 class MainActivity : Activity() {
- private val prefs by lazy { getSharedPreferences("reel_guard", Context.MODE_PRIVATE) }
- private lateinit var countView: TextView
- private lateinit var meterView: TextView
- private lateinit var bar: ProgressBar
- private lateinit var usageView: TextView
- private lateinit var limitInput: EditText
- private fun day() = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
- private fun count(): Int { if (prefs.getString("day", "") != day()) prefs.edit().putString("day", day()).putInt("count", 0).apply(); return prefs.getInt("count", 0) }
- private fun limit() = UsageLogic.clampLimit(prefs.getInt("limit", 30))
- private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
- private fun bg(color: Int, radius: Int) = GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat() }
- private fun label(s: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply { text=s; textSize=size; setTextColor(color); if (bold) setTypeface(null, android.graphics.Typeface.BOLD) }
- override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); render() }
- override fun onResume() { super.onResume(); if (::countView.isInitialized) refresh() }
- private fun render() {
-  val black=Color.rgb(18,18,20); val green=Color.rgb(37,212,134); val muted=Color.rgb(150,150,155)
-  val root=LinearLayout(this).apply { orientation=1; setPadding(dp(18),dp(28),dp(18),dp(20)); setBackgroundColor(Color.rgb(242,242,242)) }
-  root.addView(label("REEL GUARD",22f,black,true))
-  root.addView(label("A little more control over your scroll.",14f,Color.DKGRAY).apply { setPadding(0,dp(4),0,dp(22)) })
-  val pill=LinearLayout(this).apply { orientation=0; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(16),dp(16),dp(16),dp(16)); background=bg(black,48) }
-  pill.addView(label("🔥",28f,Color.WHITE),LinearLayout.LayoutParams(dp(44),dp(48)))
-  val left=LinearLayout(this).apply { orientation=1 }
-  left.addView(label("STREAK",13f,muted,true))
-  countView=label("0 SESSIONS",20f,Color.WHITE,true); left.addView(countView); left.addView(label("TODAY'S REELS / SHORTS",10f,muted))
-  pill.addView(left,LinearLayout.LayoutParams(0,-2,1f))
-  val right=LinearLayout(this).apply { orientation=1; setPadding(dp(10),0,0,0) }
-  right.addView(label("DAILY LIMIT",12f,muted))
-  meterView=label("0%",22f,Color.WHITE,true); right.addView(meterView)
-  bar=ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { max=100; progressTintList=android.content.res.ColorStateList.valueOf(green); progressBackgroundTintList=android.content.res.ColorStateList.valueOf(Color.rgb(39,66,54)) }
-  right.addView(bar,LinearLayout.LayoutParams(dp(100),dp(8)).apply { topMargin=dp(8) }); pill.addView(right); root.addView(pill)
-  root.addView(label("SESSION COUNTER",13f,black,true).apply { setPadding(0,dp(20),0,dp(8)) })
-  val actions=LinearLayout(this).apply { orientation=0; gravity=Gravity.CENTER }
-  actions.addView(button("−",Color.LTGRAY,black){ update(-1) },LinearLayout.LayoutParams(0,dp(48),1f).apply { marginEnd=dp(5) })
-  actions.addView(button("+ Watched one",green,black){ update(1) },LinearLayout.LayoutParams(0,dp(48),2f).apply { marginHorizontalCompat(dp(5)) })
-  actions.addView(button("+5",Color.LTGRAY,black){ update(5) },LinearLayout.LayoutParams(0,dp(48),1f).apply { marginStart=dp(5) })
-  root.addView(actions)
-  root.addView(label("APP USAGE TODAY",13f,black,true).apply { setPadding(0,dp(20),0,dp(8)) })
-  usageView=label("Instagram: grant Usage Access\nYouTube: grant Usage Access",14f,Color.DKGRAY).apply { setPadding(dp(14),dp(14),dp(14),dp(14)); background=bg(Color.WHITE,16) }
-  root.addView(usageView,LinearLayout.LayoutParams(-1,-2))
-  root.addView(button("Grant Usage Access",black,Color.WHITE){ startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },LinearLayout.LayoutParams(-1,dp(48)).apply { topMargin=dp(12) })
-  root.addView(label("SET DAILY SESSION LIMIT",13f,black,true).apply { setPadding(0,dp(20),0,dp(8)) })
-  val row=LinearLayout(this).apply { orientation=0; gravity=Gravity.CENTER_VERTICAL }
-  limitInput=EditText(this).apply { inputType=2; setSingleLine(true); setText(limit().toString()); hint="1–1440" }
-  row.addView(limitInput,LinearLayout.LayoutParams(0,dp(50),1f))
-  row.addView(button("Save limit",green,black){ val n=limitInput.text.toString().toIntOrNull(); if(n==null || n !in 1..1440) limitInput.error="Enter 1–1440" else { prefs.edit().putInt("limit",n).apply(); refresh(); Toast.makeText(this,"Limit saved",Toast.LENGTH_SHORT).show() } },LinearLayout.LayoutParams(dp(120),dp(48)))
-  root.addView(row)
-  root.addView(label("Count is manual. Android reports app time, not individual reel swipes. Data stays on this device.",12f,Color.DKGRAY).apply { setPadding(0,dp(18),0,0) })
-  setContentView(ScrollView(this).apply { addView(root) }); refresh()
- }
- private fun LinearLayout.LayoutParams.marginHorizontalCompat(value: Int) { marginStart=value; marginEnd=value }
- private fun button(title:String,color:Int,fg:Int,action:()->Unit)=Button(this).apply { text=title; textSize=13f; setTextColor(fg); background=bg(color,24); isAllCaps=false; setOnClickListener { action() } }
- private fun update(delta:Int) { val old=count(); val next=if(delta<0) (old+delta).coerceAtLeast(0) else UsageLogic.safeIncrement(old,delta); prefs.edit().putString("day",day()).putInt("count",next).apply(); refresh() }
- private fun hasAccess():Boolean { val ops=getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager; @Suppress("DEPRECATION") val mode=ops.checkOpNoThrow("android:get_usage_stats",android.os.Process.myUid(),packageName); return mode==AppOpsManager.MODE_ALLOWED }
- private fun minutes(pkg:String):Long? { if(!hasAccess()) return null; return try { val c=Calendar.getInstance(); c.set(Calendar.HOUR_OF_DAY,0); c.set(Calendar.MINUTE,0); c.set(Calendar.SECOND,0); c.set(Calendar.MILLISECOND,0); val stats=(getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager).queryUsageStats(UsageStatsManager.INTERVAL_DAILY,c.timeInMillis,System.currentTimeMillis()); stats.filter{it.packageName==pkg}.sumOf{it.totalTimeInForeground}/60000L } catch (_:Exception) { null } }
- private fun fmt(v:Long?)=if(v==null) "Grant Usage Access" else "$v min"
- private fun refresh() { if(!::countView.isInitialized) return; val n=count(); val l=limit(); val p=UsageLogic.percent(n,l); countView.text="$n SESSIONS"; meterView.text="$p%"; bar.progress=p; val status=when { n>l -> "⚠ Limit exceeded by ${n-l}. Take a break."; p>=80 -> "Almost at your daily limit."; else -> "You're within your daily limit." }; title = "Reel Guard"; usageView.text="Instagram: ${fmt(minutes("com.instagram.android"))}\nYouTube: ${fmt(minutes("com.google.android.youtube"))}"; meterView.contentDescription=status }
+    private val prefs by lazy { getSharedPreferences("reel_guard", Context.MODE_PRIVATE) }
+    private lateinit var countView: TextView
+    private lateinit var zoneView: TextView
+    private lateinit var limitInput: EditText
+    private fun day() = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+    private fun count(): Int {
+        if (prefs.getString("day", "") != day()) prefs.edit().putString("day", day()).putInt("count", 0).apply()
+        return prefs.getInt("count", 0)
+    }
+    private fun limit() = prefs.getInt("limit", 200).coerceIn(1, 10000)
+    private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
+    private fun bg(color: Int, radius: Int) = GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat() }
+    private fun label(s: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
+        text=s; textSize=size; setTextColor(color); if (bold) setTypeface(null, android.graphics.Typeface.BOLD)
+    }
+    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); render() }
+    override fun onResume() { super.onResume(); if (::countView.isInitialized) refresh() }
+    private fun render() {
+        val black=Color.rgb(18,18,20); val green=Color.rgb(35,190,115); val muted=Color.rgb(110,110,116)
+        val root=LinearLayout(this).apply { orientation=1; setPadding(dp(20),dp(28),dp(20),dp(24)); setBackgroundColor(Color.rgb(246,246,247)) }
+        root.addView(label("REEL GUARD",24f,black,true))
+        root.addView(label("Your scroll, made visible.",15f,muted).apply { setPadding(0,dp(4),0,dp(20)) })
+        val card=LinearLayout(this).apply { orientation=1; setPadding(dp(20),dp(18),dp(20),dp(18)); background=bg(black,24) }
+        card.addView(label("TODAY'S REELS & SHORTS",12f,Color.LTGRAY,true))
+        countView=label("0",48f,Color.WHITE,true); card.addView(countView)
+        zoneView=label("GREEN ZONE · STEADY",14f,green,true); card.addView(zoneView)
+        val bar=ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { max=700; progressTintList=android.content.res.ColorStateList.valueOf(green); progressBackgroundTintList=android.content.res.ColorStateList.valueOf(Color.DKGRAY) }
+        card.addView(bar,LinearLayout.LayoutParams(-1,dp(8)).apply { topMargin=dp(14) })
+        root.addView(card)
+        root.addView(label("DAILY ZONES",14f,black,true).apply { setPadding(0,dp(22),0,dp(8)) })
+        root.addView(zoneRow("0–200 reels","Green · comfortable",Color.rgb(35,190,115)))
+        root.addView(zoneRow("201–400 reels","Amber · pause and check in",Color.rgb(245,174,45)))
+        root.addView(zoneRow("401–700 reels","Red · extreme scrolling",Color.rgb(235,75,75)))
+        root.addView(zoneRow("700+ reels","Very high · strongly consider stopping",Color.rgb(180,40,45)))
+        root.addView(label("AUTOMATIC COUNTER",14f,black,true).apply { setPadding(0,dp(24),0,dp(6)) })
+        root.addView(label("Enable Reel Guard in Android Accessibility settings, then allow it to display over other apps. A small pill stays at the top centre while Instagram or YouTube is open. Tap it any time to return here.",14f,Color.DKGRAY))
+        root.addView(button("Enable automatic counting",black,Color.WHITE) { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },LinearLayout.LayoutParams(-1,dp(50)).apply { topMargin=dp(12) })
+        root.addView(button("Allow top counter overlay",green,black) {
+            if (!Settings.canDrawOverlays(this)) startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName)))
+            else Toast.makeText(this,"Overlay permission is already enabled",Toast.LENGTH_SHORT).show()
+        },LinearLayout.LayoutParams(-1,dp(50)).apply { topMargin=dp(8) })
+        root.addView(label("DAILY TARGET",14f,black,true).apply { setPadding(0,dp(22),0,dp(6)) })
+        limitInput=EditText(this).apply { inputType=2; setSingleLine(true); setText(limit().toString()); hint="Target reels per day" }
+        root.addView(limitInput,LinearLayout.LayoutParams(-1,dp(52)))
+        root.addView(button("Save target",green,black) {
+            val n=limitInput.text.toString().toIntOrNull()
+            if (n == null || n !in 1..10000) limitInput.error="Enter a target from 1 to 10,000"
+            else { prefs.edit().putInt("limit",n).apply(); Toast.makeText(this,"Daily target saved",Toast.LENGTH_SHORT).show(); refresh() }
+        },LinearLayout.LayoutParams(-1,dp(48)).apply { topMargin=dp(6) })
+        root.addView(label("Accuracy note: Android does not provide a direct per-reel counter. Reel Guard estimates reel changes from accessibility scroll/content events, so it can miss or occasionally double-count items depending on app version. It does not save screen text or send data off your phone.",12f,muted).apply { setPadding(0,dp(20),0,0) })
+        setContentView(ScrollView(this).apply { addView(root) }); refresh()
+    }
+    private fun zoneRow(title: String, subtitle: String, color: Int) = LinearLayout(this).apply {
+        orientation=0; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(12),dp(12),dp(12),dp(12)); background=bg(Color.WHITE,14)
+        addView(TextView(this@MainActivity).apply { text="●"; textSize=18f; setTextColor(color) },LinearLayout.LayoutParams(dp(28),-2))
+        val col=LinearLayout(this@MainActivity).apply { orientation=1; addView(label(title,14f,Color.BLACK,true)); addView(label(subtitle,12f,Color.DKGRAY)) }
+        addView(col,LinearLayout.LayoutParams(0,-2,1f))
+    }
+    private fun button(title:String,color:Int,fg:Int,action:()->Unit)=Button(this).apply {
+        text=title; textSize=14f; setTextColor(fg); background=bg(color,20); isAllCaps=false; setOnClickListener { action() }
+    }
+    private fun refresh() {
+        if (!::countView.isInitialized) return
+        val n=count()
+        countView.text=n.toString()
+        val color=when { n<=200 -> Color.rgb(35,190,115); n<=400 -> Color.rgb(245,174,45); else -> Color.rgb(235,75,75) }
+        zoneView.setTextColor(color)
+        zoneView.text=when { n<=200 -> "GREEN ZONE · STEADY"; n<=400 -> "AMBER ZONE · TAKE A PAUSE"; n<=700 -> "EXTREME · TIME TO STOP"; else -> "VERY HIGH · PUT THE PHONE DOWN" }
+    }
 }
